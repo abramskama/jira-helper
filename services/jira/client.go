@@ -1,4 +1,4 @@
-package jira_client
+package jira
 
 import (
 	"fmt"

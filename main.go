@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"jira-helper/jira_client"
+	"jira-helper/services/jira"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 		return
 	}
 
-	jiraClient := jira_client.NewClient(jiraHost, authToken)
+	jiraClient := jira.NewClient(jiraHost, authToken)
 
 	if err := jiraClient.CheckAuth(); err != nil {
 		fmt.Printf("Check jira auth error: %s", err.Error())
@@ -42,7 +42,7 @@ func main() {
 	}
 }
 
-func addWorklog(interactive bool, meetingsJiraIssue string, jiraClient *jira_client.Client) {
+func addWorklog(interactive bool, meetingsJiraIssue string, jiraClient *jira.Client) {
 	defer fmt.Printf("\n\n")
 
 	var (
