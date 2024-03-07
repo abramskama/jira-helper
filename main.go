@@ -2,23 +2,33 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-)
 
-var (
-	JIRA_TOKEN          = "персональный токен из жиры"
-	MEETINGS_JIRA_ISSUE = "INT-18"
+	"jira-helper/jira_client"
 )
 
 func main() {
+	authToken := os.Getenv("JIRA_AUTH_TOKEN")
+	meetingsJiraIssue := os.Getenv("MEETINGS_JIRA_ISSUE")
+	jiraHost := os.Getenv("JIRA_HOST")
+
+	if authToken == "" {
+		fmt.Println("Need to set JIRA_AUTH_TOKEN in .env")
+		return
+	}
+
+	jiraClient := jira_client.NewClient(jiraHost, authToken)
+
+	if err := jiraClient.CheckAuth(); err != nil {
+		fmt.Printf("Check jira auth error: %s", err.Error())
+		return
+	}
+
 	argsWithProg := os.Args
 	interactive := false
 	for _, arg := range argsWithProg {
@@ -27,37 +37,45 @@ func main() {
 		}
 	}
 
-	if interactive {
-		issue, date, spentTime, comment := prepareArgsInteractive()
-		logWork(issue, date, spentTime, comment)
-		return
-	}
-
 	for {
-		issue, date, spentTime, comment := prepareArgs()
-		logWork(issue, date, spentTime, comment)
+		addWorklog(interactive, meetingsJiraIssue, jiraClient)
 	}
 }
 
-func logWork(issue string, date string, spentTime time.Duration, comment string) {
-	req, err := addWorklogRequest(issue, date, spentTime, comment)
-	if err != nil {
-		panic(err)
+func addWorklog(interactive bool, meetingsJiraIssue string, jiraClient *jira_client.Client) {
+	defer fmt.Printf("\n\n")
+
+	var (
+		issue, date, comment string
+		spentTime            time.Duration
+		err                  error
+	)
+
+	if interactive {
+		issue, date, spentTime, comment, err = prepareArgsInteractive(meetingsJiraIssue)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+	} else {
+		issue, date, spentTime, comment = prepareArgs()
 	}
 
 	send := checkSend(issue, date, spentTime, comment)
 	if !send {
+		fmt.Printf("Result wasn't sent")
 		return
 	}
 
-	err = doRequest(req)
+	err = jiraClient.AddWorklog(issue, date, spentTime, comment)
 	if err != nil {
-		panic(err)
+		fmt.Printf("Result wasn't sent: %s", err.Error())
 	}
+	return
 }
 
-func prepareArgsInteractive() (string, string, time.Duration, string) {
-	fmt.Print("Выбран запуск в интерактивном режиме")
+func prepareArgsInteractive(meetingsJiraIssue string) (string, string, time.Duration, string, error) {
+	fmt.Print("--- Interactive mode ---\n")
 	reader := bufio.NewReader(os.Stdin)
 
 	issue, err := read(reader, "Issue: ")
@@ -65,11 +83,14 @@ func prepareArgsInteractive() (string, string, time.Duration, string) {
 		panic(err)
 	}
 	if issue == "" {
-		issue = MEETINGS_JIRA_ISSUE
+		if meetingsJiraIssue == "" {
+			return "", "", time.Second, "", errors.New("Please input jira issue or set MEETINGS_JIRA_ISSUE in .env")
+		}
+		issue = meetingsJiraIssue
 	}
 	date, err := read(reader, "Date: ")
 	if err != nil {
-		panic(err)
+		return "", "", time.Second, "", err
 	}
 	if date == "" {
 		date = time.Now().Format(time.DateOnly)
@@ -77,21 +98,21 @@ func prepareArgsInteractive() (string, string, time.Duration, string) {
 	var spentTime time.Duration
 	spent, err := read(reader, "Spent time: ")
 	if err != nil {
-		panic(err)
+		return "", "", time.Second, "", err
 	}
 	if spentHours, err := strconv.Atoi(spent); err == nil {
 		spentTime = time.Duration(spentHours) * time.Hour
 	} else {
 		spentTime, err = time.ParseDuration(spent)
 		if err != nil {
-			panic(err)
+			return "", "", time.Second, "", err
 		}
 	}
 	comment, err := read(reader, "Comment: ")
 	if err != nil {
-		panic(err)
+		return "", "", time.Second, "", err
 	}
-	return issue, date, spentTime, comment
+	return issue, date, spentTime, comment, nil
 }
 
 func read(reader *bufio.Reader, text string) (string, error) {
@@ -101,51 +122,12 @@ func read(reader *bufio.Reader, text string) (string, error) {
 	return result, nil
 }
 
-func doRequest(req *http.Request) error {
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		if resp.Body != nil {
-			respBody, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				panic(err)
-			}
-			var response json.RawMessage
-			_ = json.Unmarshal(respBody, &response)
-			log.Println(string(respBody))
-		}
-		return fmt.Errorf("status code %d", resp.StatusCode)
-	}
-	_, err = ioutil.ReadAll(resp.Body)
-	return err
-}
-
-func addWorklogRequest(issue string, date string, spentTime time.Duration, comment string) (*http.Request, error) {
-	body := `{"timeSpentSeconds": "%d",	"started": "%sT18:00:00.751+0000", "comment": "%s"}`
-	body = fmt.Sprintf(body, int(spentTime.Seconds()), date, comment)
-	fmt.Println(body)
-	buf := strings.NewReader(body)
-	url := fmt.Sprintf("https://jira.lamoda.ru/rest/api/2/issue/%s/worklog", issue)
-
-	req, err := http.NewRequest(http.MethodPost, url, buf)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Authorization", "Bearer "+JIRA_TOKEN)
-	req.Header.Add("Content-Type", "application/json")
-
-	return req, nil
-}
-
 func checkSend(issue string, date string, spentTime time.Duration, comment string) bool {
 	fmt.Println(issue, date, spentTime, comment)
 
 	reader := bufio.NewReader(os.Stdin)
-	answer, err := read(reader, "Send y/N: ")
-	if err != nil || answer == "N" {
+	answer, err := read(reader, "Send Y/n: ")
+	if err != nil || answer == "n" || answer == "N" {
 		return false
 	}
 	return true
