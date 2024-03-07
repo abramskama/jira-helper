@@ -134,11 +134,11 @@ func checkSend(issue string, date string, spentTime time.Duration, comment strin
 }
 
 func prepareArgs() (string, string, time.Duration, string) {
-	fmt.Print("Выбран запуск в построчном режиме, для интерактивного используйте флаг -i")
-	fmt.Print("Формат {YYYY-MM-DD} {ISSUE} {SPENT_TIME} {COMMENT}")
+	fmt.Print("--- Bulk mode ---\n")
+	fmt.Print("Format {YYYY-MM-DD} {ISSUE} {SPENT_TIME} {COMMENT}\n")
 	reader := bufio.NewReader(os.Stdin)
 
-	row, err := read(reader, "Raw worklog: ")
+	row, err := read(reader, "Worklog row: ")
 	if err != nil {
 		panic(err)
 	}

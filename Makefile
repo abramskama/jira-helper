@@ -5,4 +5,4 @@ run:
 	@go run main.go -i
 
 bulk-run:
-	@go run main.go -i
+	@go run main.go
