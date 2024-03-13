@@ -2,7 +2,10 @@
 export
 
 run:
-	@go run main.go -i
+	@go run main.go -command worklog -i
 
 bulk-run:
-	@go run main.go
+	@go run main.go -command worklog
+
+my-issues:
+	@go run main.go -command my-issues

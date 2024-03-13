@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
+
 	"jira-helper/services/jira"
 )
 
@@ -23,23 +25,35 @@ func main() {
 	}
 
 	jiraClient := jira.NewClient(jiraHost, authToken)
-
 	if err := jiraClient.CheckAuth(); err != nil {
 		fmt.Printf("Check jira auth error: %s", err.Error())
 		return
 	}
 
+	command := "worklog"
+
 	argsWithProg := os.Args
 	interactive := false
-	for _, arg := range argsWithProg {
+	for i, arg := range argsWithProg {
 		if arg == "-i" {
 			interactive = true
+			continue
+		}
+		if arg == "-command" && i != len(argsWithProg)-1 {
+			command = argsWithProg[i+1]
 		}
 	}
 
-	for {
-		addWorklog(interactive, meetingsJiraIssue, jiraClient)
+	if command == "worklog" {
+		for {
+			addWorklog(interactive, meetingsJiraIssue, jiraClient)
+		}
 	}
+	if command == "my-issues" {
+		myIssues(jiraClient)
+		return
+	}
+	fmt.Printf("Unknown command: %s", command)
 }
 
 func addWorklog(interactive bool, meetingsJiraIssue string, jiraClient *jira.Client) {
@@ -72,6 +86,18 @@ func addWorklog(interactive bool, meetingsJiraIssue string, jiraClient *jira.Cli
 		fmt.Printf("Result wasn't sent: %s", err.Error())
 	}
 	return
+}
+
+func myIssues(jiraClient *jira.Client) {
+	issues, err := jiraClient.EverAssignedIssues()
+	if err != nil {
+		fmt.Printf("Can't get issues: %s", err.Error())
+		return
+	}
+	formattedIssues := lo.Map(issues, func(issue jira.Issue, _ int) string {
+		return fmt.Sprintf("%s: %s", issue.Key, issue.Fields.Summary)
+	})
+	fmt.Printf(strings.Join(formattedIssues, "\n"))
 }
 
 func prepareArgsInteractive(meetingsJiraIssue string) (string, string, time.Duration, string, error) {
