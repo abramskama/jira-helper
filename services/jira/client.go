@@ -3,7 +3,7 @@ package jira
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -38,6 +38,11 @@ func (c *Client) CheckAuth() error {
 }
 
 func (c *Client) AddWorklog(issue string, date string, spentTime time.Duration, comment string) error {
+	date, err := convertDate(date)
+	if err != nil {
+		return err
+	}
+
 	uri := fmt.Sprintf("/rest/api/2/issue/%s/worklog", issue)
 
 	body := `{"timeSpentSeconds": "%d",	"started": "%sT18:00:00.751+0000", "comment": "%s"}`
@@ -144,7 +149,7 @@ func doRequest(req *http.Request) ([]byte, error) {
 	if resp.StatusCode > http.StatusIMUsed {
 		body := ""
 		if resp.Body != nil {
-			respBody, err := ioutil.ReadAll(resp.Body)
+			respBody, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return nil, fmt.Errorf("fail to read response body: %s", err.Error())
 			}
@@ -152,5 +157,5 @@ func doRequest(req *http.Request) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("status code %d, body: %s", resp.StatusCode, body)
 	}
-	return ioutil.ReadAll(resp.Body)
+	return io.ReadAll(resp.Body)
 }
